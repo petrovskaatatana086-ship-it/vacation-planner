@@ -1,0 +1,398 @@
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vacation Planner - Ultimate Edition</title>
+    <meta name="theme-color" content="#0f172a">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    
+    <!-- Подключаем зависимости -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; -webkit-tap-highlight-color: transparent; background-color: #f1f5f9; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .animate-in { animation: fadeIn 0.4s ease-out forwards; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
+</head>
+<body class="transition-colors duration-300">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+        
+        // Компонент иконки для CDN-версии Lucide
+        const Icon = ({ name, size = 24, strokeWidth = 2, className = "" }) => {
+            useEffect(() => {
+                if (window.lucide) window.lucide.createIcons();
+            }, [name, size]);
+            return <i data-lucide={name} style={{ width: size, height: size }} className={className} stroke-width={strokeWidth}></i>;
+        };
+
+        const App = () => {
+            const [activeTab, setActiveTab] = useState('home');
+            const [isModalOpen, setIsModalOpen] = useState(false);
+            const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
+            const [isEditingName, setIsEditingName] = useState(false);
+            const fileInputRef = useRef(null);
+            
+            // Хранилище данных
+            const getInitialData = (key, defaultValue) => {
+                const saved = localStorage.getItem(key);
+                try { return saved ? JSON.parse(saved) : defaultValue; } catch (e) { return defaultValue; }
+            };
+
+            const [tripName, setTripName] = useState(() => localStorage.getItem('tripName') || 'Лазурный берег');
+            const [tripDate, setTripDate] = useState(() => localStorage.getItem('tripDate') || '');
+            const [newItemName, setNewItemName] = useState(''); 
+            const [newItemContent, setNewItemContent] = useState(''); 
+            const [selectedTime, setSelectedTime] = useState('В планах');
+            const [selectedCategory, setSelectedCategory] = useState('Адреса');
+            
+            const [tasks, setTasks] = useState(() => getInitialData('tasks', [
+                { id: 1, title: 'Проверить сроки паспортов', time: 'За 30 дней', completed: true },
+                { id: 2, title: 'Забронировать трансфер', time: 'За 14 дней', completed: false }
+            ]));
+
+            const [packingList, setPackingList] = useState(() => getInitialData('packingList', [
+                { id: 101, item: 'Зарядка для планшета', cat: 'Сын (Поезда)', checked: false },
+                { id: 102, item: 'Модели локомотивов', cat: 'Сын (Поезда)', checked: true }
+            ]));
+
+            const [notes, setNotes] = useState(() => getInitialData('notes_v2', [
+                { id: 901, title: 'Отель Riviera', content: 'ул. Набережная, 15. Код 1234', category: 'Адреса' }
+            ]));
+
+            const [lastMinute, setLastMinute] = useState(() => getInitialData('lastMinute', [
+                { id: 1, title: 'Утюг выключен', checked: false },
+                { id: 2, title: 'Окна закрыты', checked: false },
+                { id: 3, title: 'Вода перекрыта', checked: false },
+                { id: 4, title: 'Мусор вынесен', checked: false }
+            ]));
+
+            // Эффекты сохранения
+            useEffect(() => {
+                localStorage.setItem('tripName', tripName);
+                localStorage.setItem('tripDate', tripDate);
+                localStorage.setItem('tasks', JSON.stringify(tasks));
+                localStorage.setItem('packingList', JSON.stringify(packingList));
+                localStorage.setItem('notes_v2', JSON.stringify(notes));
+                localStorage.setItem('lastMinute', JSON.stringify(lastMinute));
+            }, [tripName, tripDate, tasks, packingList, notes, lastMinute]);
+
+            const timePeriods = ['В планах', 'За 30 дней', 'За 14 дней', 'За 7 дней', '24 часа'];
+            const noteCategories = ['Адреса', 'Покупки', 'Места', 'Важное'];
+
+            // Рассчет обратного отсчета
+            const getDaysLeft = () => {
+                if (!tripDate) return 14; 
+                const diff = new Date(tripDate) - new Date();
+                return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
+            };
+
+            const handleAddItem = (e) => {
+                e.preventDefault();
+                if (!newItemName.trim()) return;
+                const id = Date.now();
+                if (activeTab === 'tasks') setTasks([{ id, title: newItemName, time: selectedTime, completed: false }, ...tasks]);
+                else if (activeTab === 'packing') setPackingList([{ id, item: newItemName, cat: 'Разное', checked: false }, ...packingList]);
+                else if (activeTab === 'notes') setNotes([{ id, title: newItemName, content: newItemContent, category: selectedCategory }, ...notes]);
+                setNewItemName('');
+                setNewItemContent('');
+                setIsModalOpen(false);
+            };
+
+            const deleteItem = (type, id) => {
+                if (type === 'notes') setNotes(notes.filter(n => n.id !== id));
+                if (type === 'tasks') setTasks(tasks.filter(t => t.id !== id));
+                if (type === 'packing') setPackingList(packingList.filter(p => p.id !== id));
+            };
+
+            const exportData = () => {
+                const data = { tripName, tripDate, tasks, packingList, notes, lastMinute };
+                const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(blob);
+                a.download = `plan-${tripName}.json`;
+                a.click();
+            };
+
+            const importData = (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    try {
+                        const data = JSON.parse(event.target.result);
+                        if (data.tripName) setTripName(data.tripName);
+                        if (data.tripDate) setTripDate(data.tripDate);
+                        if (data.tasks) setTasks(data.tasks);
+                        if (data.packingList) setPackingList(data.packingList);
+                        if (data.notes) setNotes(data.notes);
+                        if (data.lastMinute) setLastMinute(data.lastMinute);
+                    } catch (err) { alert("Ошибка при чтении файла"); }
+                };
+                reader.readAsText(file);
+            };
+
+            const applyTemplate = (key) => {
+                const temp = {
+                    beach: { tasks: [{id:Date.now(), title:'Купить SPF', time:'За 7 дней'}], packing: [{id:Date.now()+1, item:'Плавки', cat:'Гардероб'}] },
+                    train: { tasks: [{id:Date.now(), title:'Зарядить PowerBank', time:'24 часа'}], packing: [{id:Date.now()+1, item:'Игрушечный поезд', cat:'Сын (Поезда)'}] }
+                };
+                if (temp[key]) {
+                    setTasks([...tasks, ...temp[key].tasks]);
+                    setPackingList([...packingList, ...temp[key].packing]);
+                }
+                setIsTemplateModalOpen(false);
+            };
+
+            const progress = Math.round((tasks.filter(t => t.completed).length / (tasks.length || 1)) * 100);
+
+            return (
+                <div className="flex justify-center items-center min-h-screen p-0 sm:p-4 transition-colors duration-300">
+                    <div className="w-full max-w-md bg-white sm:rounded-[3.5rem] shadow-2xl overflow-hidden sm:border-8 border-slate-900 relative h-screen sm:h-[844px] flex flex-col">
+                        
+                        {/* Header */}
+                        <div className="p-6 pt-10 pb-2 flex justify-between items-start">
+                            <div className="flex-1">
+                                {isEditingName ? (
+                                    <div className="space-y-2">
+                                        <input autoFocus className="text-xl font-bold border-b-2 border-blue-500 outline-none w-full bg-transparent text-slate-900" value={tripName} onChange={e => setTripName(e.target.value)} onBlur={() => setIsEditingName(false)} />
+                                        <input type="date" className="text-xs bg-slate-50 p-1 rounded border-none outline-none text-slate-600" value={tripDate} onChange={e => setTripDate(e.target.value)} />
+                                    </div>
+                                ) : (
+                                    <div className="cursor-pointer group" onClick={() => setIsEditingName(true)}>
+                                        <div className="flex items-center gap-2">
+                                            <h1 className="text-2xl font-bold tracking-tight text-slate-900">{tripName}</h1>
+                                            <Icon name="edit-3" size={14} className="text-slate-300 group-hover:text-blue-500" />
+                                        </div>
+                                        <p className="text-blue-500 text-[10px] font-bold uppercase tracking-widest mt-1">
+                                            {tripDate ? new Date(tripDate).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' }) : "Настроить дату"}
+                                        </p>
+                                    </div>
+                                )}
+                            </div>
+                            <div className="flex gap-2">
+                                <button onClick={() => fileInputRef.current.click()} className="bg-slate-100 p-2.5 rounded-2xl text-slate-500 hover:bg-slate-200 transition-colors">
+                                    <Icon name="upload" size={20} />
+                                </button>
+                                <button onClick={exportData} className="bg-slate-100 p-2.5 rounded-2xl text-slate-500 hover:bg-slate-200 transition-colors">
+                                    <Icon name="download" size={20} />
+                                </button>
+                                <input type="file" ref={fileInputRef} className="hidden" accept=".json" onChange={importData} />
+                            </div>
+                        </div>
+
+                        {/* Content */}
+                        <div className="flex-1 overflow-y-auto px-6 pb-32 no-scrollbar">
+                            
+                            {activeTab === 'home' && (
+                                <div className="space-y-6 animate-in">
+                                    <div className="bg-slate-900 rounded-[2.5rem] p-7 text-white shadow-xl relative overflow-hidden">
+                                        <Icon name="plane" size={140} className="absolute -right-8 -top-8 text-white/5 rotate-12" />
+                                        <div className="relative z-10">
+                                            <p className="text-slate-400 text-[10px] uppercase tracking-widest mb-1 font-bold">Осталось до выезда</p>
+                                            <div className="text-5xl font-light mb-6 flex items-baseline gap-1">{getDaysLeft()}<span className="text-lg opacity-40"> дн.</span></div>
+                                            <div className="flex justify-between items-center mb-2 text-[10px] font-bold text-slate-400">
+                                                <span>ПОДГОТОВКА</span>
+                                                <span className="text-blue-400">{progress}%</span>
+                                            </div>
+                                            <div className="w-full bg-white/10 rounded-full h-1.5 overflow-hidden">
+                                                <div className="bg-blue-400 h-full transition-all duration-1000" style={{ width: `${progress}%` }}></div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Quick Checklist "Before Leaving" */}
+                                    <div className="bg-rose-50 p-6 rounded-[2.5rem] border border-rose-100">
+                                        <div className="flex items-center gap-2 mb-4">
+                                            <Icon name="zap" size={16} className="text-rose-500" />
+                                            <h3 className="text-xs font-bold text-rose-800 uppercase tracking-widest">Перед выходом</h3>
+                                        </div>
+                                        <div className="grid grid-cols-1 gap-2">
+                                            {lastMinute.map(item => (
+                                                <div 
+                                                    key={item.id} 
+                                                    onClick={() => setLastMinute(lastMinute.map(i => i.id === item.id ? {...i, checked: !i.checked} : i))}
+                                                    className={`flex items-center gap-3 p-3 rounded-2xl cursor-pointer transition-all ${item.checked ? 'bg-rose-100/50 line-through opacity-50' : 'bg-white shadow-sm'}`}
+                                                >
+                                                    <Icon name={item.checked ? "check-circle-2" : "circle"} size={16} className={item.checked ? "text-rose-500" : "text-rose-200"} />
+                                                    <span className="text-xs font-semibold text-rose-900">{item.title}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div onClick={() => setActiveTab('tasks')} className="bg-slate-50 p-5 rounded-[2rem] border border-slate-100 cursor-pointer active:scale-[0.98] transition-all hover:bg-white hover:shadow-md">
+                                            <Icon name="calendar" className="text-orange-500 mb-3" />
+                                            <span className="text-xs font-bold block text-slate-800">Задачи</span>
+                                            <p className="text-[10px] text-slate-400 font-bold uppercase">{tasks.filter(t => !t.completed).length} ждет</p>
+                                        </div>
+                                        <div onClick={() => setActiveTab('packing')} className="bg-slate-50 p-5 rounded-[2rem] border border-slate-100 cursor-pointer active:scale-[0.98] transition-all hover:bg-white hover:shadow-md">
+                                            <Icon name="package" className="text-indigo-500 mb-3" />
+                                            <span className="text-xs font-bold block text-slate-800">Вещи</span>
+                                            <p className="text-[10px] text-slate-400 font-bold uppercase">{packingList.filter(p => !p.checked).length} собрать</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {activeTab === 'tasks' && (
+                                <div className="space-y-6 animate-in">
+                                    {timePeriods.map(group => {
+                                        const groupTasks = tasks.filter(t => t.time === group);
+                                        if (groupTasks.length === 0) return null;
+                                        return (
+                                            <div key={group}>
+                                                <h3 className="text-[10px] uppercase tracking-widest text-slate-400 font-extrabold mb-4 px-1">{group}</h3>
+                                                <div className="space-y-2">
+                                                    {groupTasks.map(task => (
+                                                        <div key={task.id} className="group relative flex items-center gap-4 p-4 rounded-2xl bg-white border border-slate-100 shadow-sm transition-all hover:border-blue-100">
+                                                            <div onClick={() => setTasks(tasks.map(t => t.id === task.id ? {...t, completed: !t.completed} : t))} className="flex-1 flex items-center gap-4 cursor-pointer">
+                                                                {task.completed ? <Icon name="check-circle-2" className="text-blue-500" /> : <Icon name="circle" className="text-slate-200" />}
+                                                                <span className={`text-sm font-medium ${task.completed ? 'line-through text-slate-400' : 'text-slate-700'}`}>{task.title}</span>
+                                                            </div>
+                                                            <button onClick={() => deleteItem('tasks', task.id)} className="opacity-0 group-hover:opacity-100 text-slate-200 hover:text-red-500 transition-all">
+                                                                <Icon name="trash-2" size={16} />
+                                                            </button>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
+
+                            {activeTab === 'packing' && (
+                                <div className="space-y-6 animate-in">
+                                    <div className="bg-indigo-900 rounded-[2.5rem] p-7 text-white shadow-xl relative overflow-hidden">
+                                        <Icon name="train" size={100} className="absolute -right-4 -bottom-4 text-white/5" />
+                                        <h3 className="font-bold text-sm mb-4 flex items-center gap-2"><Icon name="train" size={18} /> Вещи сына</h3>
+                                        <div className="space-y-3 relative z-10">
+                                            {packingList.filter(p => p.cat === 'Сын (Поезда)').map(item => (
+                                                <div key={item.id} onClick={() => setPackingList(packingList.map(p => p.id === item.id ? {...p, checked: !p.checked} : p))} className="flex items-center gap-3 cursor-pointer group">
+                                                    <div className={`w-5 h-5 rounded-lg border-2 flex items-center justify-center transition-all ${item.checked ? 'bg-white border-white' : 'border-indigo-400 group-hover:border-white'}`}>
+                                                        {item.checked && <Icon name="check" size={12} className="text-indigo-900" />}
+                                                    </div>
+                                                    <span className={`text-xs ${item.checked ? 'opacity-40 line-through' : 'font-medium'}`}>{item.item}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                    <div className="space-y-2">
+                                        {packingList.filter(p => p.cat !== 'Сын (Поезда)').map(item => (
+                                            <div key={item.id} className="group flex justify-between items-center p-4 bg-white border border-slate-100 rounded-2xl transition-all hover:border-indigo-100">
+                                                <div onClick={() => setPackingList(packingList.map(p => p.id === item.id ? {...p, checked: !p.checked} : p))} className="flex-1 flex justify-between items-center cursor-pointer">
+                                                    <span className={`text-sm font-medium ${item.checked ? 'line-through text-slate-400' : ''}`}>{item.item}</span>
+                                                    {item.checked ? <Icon name="check-circle-2" className="text-blue-500" /> : <Icon name="circle" className="text-slate-200" />}
+                                                </div>
+                                                <button onClick={() => deleteItem('packing', item.id)} className="ml-3 opacity-0 group-hover:opacity-100 text-slate-200 hover:text-red-500 transition-all">
+                                                    <Icon name="trash-2" size={16} />
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {activeTab === 'notes' && (
+                                <div className="space-y-6 animate-in">
+                                    {noteCategories.map(cat => {
+                                        const catNotes = notes.filter(n => n.category === cat);
+                                        return (
+                                            <div key={cat} className="space-y-3">
+                                                <h3 className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest px-1">{cat}</h3>
+                                                <div className="grid gap-3">
+                                                    {catNotes.map(note => (
+                                                        <div key={note.id} className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm group relative hover:border-blue-100">
+                                                            <div className="flex justify-between items-start mb-2">
+                                                                <h4 className="font-bold text-sm text-slate-800 tracking-tight">{note.title}</h4>
+                                                                <button onClick={() => deleteItem('notes', note.id)} className="text-slate-200 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all">
+                                                                    <Icon name="x" size={14}/>
+                                                                </button>
+                                                            </div>
+                                                            <p className="text-xs text-slate-500 leading-relaxed whitespace-pre-wrap">{note.content}</p>
+                                                        </div>
+                                                    ))}
+                                                    {catNotes.length === 0 && <div className="p-4 border border-dashed border-slate-100 rounded-2xl text-[10px] text-slate-300 text-center uppercase font-bold tracking-widest">Пусто</div>}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* FAB */}
+                        {['tasks', 'packing', 'notes'].includes(activeTab) && (
+                            <button onClick={() => setIsModalOpen(true)} className="absolute bottom-28 right-6 bg-blue-500 text-white w-14 h-14 rounded-2xl shadow-2xl flex items-center justify-center active:scale-90 transition-all z-40 hover:bg-blue-600">
+                                <Icon name="plus" size={28} />
+                            </button>
+                        )}
+
+                        {/* Modals */}
+                        {isModalOpen && (
+                            <div className="absolute inset-0 z-50 flex items-end justify-center">
+                                <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setIsModalOpen(false)}></div>
+                                <div className="w-full bg-white rounded-t-[3.5rem] p-8 pb-12 shadow-2xl relative animate-in border-t border-slate-100">
+                                    <div className="w-12 h-1.5 bg-slate-100 rounded-full mx-auto mb-8"></div>
+                                    <h2 className="text-xl font-bold mb-6 text-slate-900">{activeTab === 'tasks' ? "Новое дело" : activeTab === 'notes' ? "Заметка" : "В чемодан"}</h2>
+                                    <form onSubmit={handleAddItem} className="space-y-4">
+                                        <input autoFocus type="text" value={newItemName} onChange={e => setNewItemName(e.target.value)} placeholder="Заголовок..." className="w-full bg-slate-50 border-none rounded-2xl p-4 font-bold text-slate-900 outline-none focus:ring-2 ring-blue-500/20 transition-all" />
+                                        {activeTab === 'notes' && (
+                                            <div className="space-y-4">
+                                                <textarea value={newItemContent} onChange={e => setNewItemContent(e.target.value)} placeholder="Описание / Ссылки..." className="w-full bg-slate-50 border-none rounded-2xl p-4 text-sm font-medium h-32 outline-none no-scrollbar" />
+                                                <div className="flex flex-wrap gap-2">
+                                                    {noteCategories.map(cat => (
+                                                        <button key={cat} type="button" onClick={() => setSelectedCategory(cat)} className={`px-4 py-2 rounded-xl text-[10px] font-bold border-2 transition-all ${selectedCategory === cat ? 'bg-blue-500 border-blue-500 text-white shadow-lg' : 'bg-white border-slate-100 text-slate-400 hover:border-slate-200'}`}>{cat}</button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                        {activeTab === 'tasks' && (
+                                            <div className="flex flex-wrap gap-2">
+                                                {timePeriods.map(p => (
+                                                    <button key={p} type="button" onClick={() => setSelectedTime(p)} className={`px-4 py-2 rounded-xl text-[10px] font-bold border-2 transition-all ${selectedTime === p ? 'bg-slate-900 border-slate-900 text-white shadow-lg' : 'bg-white border-slate-100 text-slate-400'}`}>{p}</button>
+                                                ))}
+                                            </div>
+                                        )}
+                                        <button type="submit" className="w-full bg-blue-500 text-white font-bold p-5 rounded-3xl shadow-lg shadow-blue-500/20 active:scale-95 transition-all mt-4">Добавить в план</button>
+                                    </form>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Navigation */}
+                        <div className="absolute bottom-0 w-full bg-white/90 backdrop-blur-lg border-t border-slate-100 h-24 flex justify-around items-center px-4 z-30 pb-4">
+                            {[
+                                {id:'home', icon:'home', label:'Старт'}, 
+                                {id:'tasks', icon:'calendar', label:'План'}, 
+                                {id:'packing', icon:'briefcase', label:'Вещи'}, 
+                                {id:'notes', icon:'file-text', label:'Инфо'}
+                            ].map(item => (
+                                <button key={item.id} onClick={() => {setActiveTab(item.id); setIsModalOpen(false);}} className={`flex flex-col items-center gap-1.5 transition-all px-4 ${activeTab === item.id ? 'text-blue-500 scale-110' : 'text-slate-300 hover:text-slate-400'}`}>
+                                    <Icon name={item.icon} size={22} strokeWidth={activeTab === item.id ? 2.5 : 2} />
+                                    <span className="text-[9px] font-bold uppercase tracking-tight">{item.label}</span>
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
